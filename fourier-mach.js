@@ -1,30 +1,39 @@
+'use strict';
+
 const maxTime = 10.0; 
 const dt = 0.025;      
 
 let currentTime = 0;
 let animationFrameId = null;
 let windingFreq = 1.0;
+let simSpeed = 1.0;
 
+// 초기 채널 데이터 세팅 (hz, amp, phase)
 let channels = [
-    { hz: 1.0, amp: 1.0 },
-    { hz: 2.5, amp: 0.8 }
+    { hz: 1.0, amp: 1.0, phase: 0 },
+    { hz: 2.5, amp: 0.8, phase: 90 }
 ];
 
 let complexPoints = [];
 let sumReal = 0, sumImag = 0, count = 0;
 let timeChart, complexChart, centerTrackingChart;
 
+// DOM 캐싱 (성능 향상)
 const container = document.getElementById('frequencyContainer');
 const windingInput = document.getElementById('windingFreqInput');
 const windingVal = document.getElementById('windingFreqVal');
+const speedInput = document.getElementById('speedInput');
 const startBtn = document.getElementById('startBtn');
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const mainContent = document.getElementById('mainContent');
 
-window.onload = () => {
-    initCharts();
-    renderChannelUI();
-    updateFourierSpectrum();
-    resetSimulation();
-};
+// 챠트 초기화 및 메인 바인딩
+initCharts();
+renderChannelUI();
+updateFourierSpectrum();
+resetSimulation();
+updateFormulaUI();
 
 function renderChannelUI() {
     container.innerHTML = '';
@@ -32,11 +41,25 @@ function renderChannelUI() {
         const card = document.createElement('div');
         card.className = 'freq-card';
         card.innerHTML = `
-            <label>주파수 ${idx+1}:</label>
-            <input type="number" value="${ch.hz}" min="0.1" max="5.0" step="0.1" class="hz-input" data-idx="${idx}"> Hz
-            <label style="margin-left:5px;">진폭:</label>
-            <input type="number" value="${ch.amp}" min="0.0" max="2.0" step="0.1" class="amp-input" data-idx="${idx}">
-            <button class="btn-red del-btn" data-idx="${idx}">X</button>
+            <div class="freq-card-header">
+                <span>채널 ${idx+1} 성분</span>
+                <button class="btn-red del-btn" data-idx="${idx}">삭제 (X)</button>
+            </div>
+            <div class="freq-row">
+                <label>주파수:</label>
+                <input type="range" min="0.1" max="5.0" step="0.1" value="${ch.hz}" class="hz-range" data-idx="${idx}">
+                <span class="val-disp">${ch.hz.toFixed(1)} Hz</span>
+            </div>
+            <div class="freq-row">
+                <label>진폭:</label>
+                <input type="range" min="0.0" max="2.0" step="0.1" value="${ch.amp}" class="amp-range" data-idx="${idx}">
+                <span class="val-disp">${ch.amp.toFixed(1)}</span>
+            </div>
+            <div class="freq-row">
+                <label>위상:</label>
+                <input type="range" min="0" max="360" step="15" value="${ch.phase}" class="phase-range" data-idx="${idx}">
+                <span class="val-disp">${ch.phase}°</span>
+            </div>
         `;
         container.appendChild(card);
     });
@@ -44,48 +67,109 @@ function renderChannelUI() {
 }
 
 function bindUIEvents() {
-    document.querySelectorAll('.hz-input').forEach(input => {
-        input.addEventListener('change', (e) => {
-            channels[e.target.dataset.idx].hz = parseFloat(e.target.value) || 0;
-            updateFourierSpectrum(); resetSimulation();
+    // 이벤트 위임을 쓰지 않고 입력 피드백 최적화를 위해 개별 바인딩 유지
+    document.querySelectorAll('.hz-range').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = e.target.dataset.idx;
+            channels[idx].hz = parseFloat(e.target.value) || 0.1;
+            e.target.nextElementSibling.innerText = `${channels[idx].hz.toFixed(1)} Hz`;
+            onDataChange();
         });
     });
-    document.querySelectorAll('.amp-input').forEach(input => {
-        input.addEventListener('change', (e) => {
-            channels[e.target.dataset.idx].amp = parseFloat(e.target.value) || 0;
-            updateFourierSpectrum(); resetSimulation();
+    document.querySelectorAll('.amp-range').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = e.target.dataset.idx;
+            channels[idx].amp = parseFloat(e.target.value) || 0;
+            e.target.nextElementSibling.innerText = channels[idx].amp.toFixed(1);
+            onDataChange();
+        });
+    });
+    document.querySelectorAll('.phase-range').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const idx = e.target.dataset.idx;
+            channels[idx].phase = parseInt(e.target.value) || 0;
+            e.target.nextElementSibling.innerText = `${channels[idx].phase}°`;
+            onDataChange();
         });
     });
     document.querySelectorAll('.del-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             channels.splice(e.target.dataset.idx, 1);
-            renderChannelUI(); updateFourierSpectrum(); resetSimulation();
+            renderChannelUI();
+            onDataChange();
         });
     });
 }
 
-document.getElementById('addFreqBtn').addEventListener('click', () => {
-    channels.push({ hz: 2.0, amp: 0.5 });
-    renderChannelUI(); updateFourierSpectrum(); resetSimulation();
-});
+function onDataChange() {
+    updateFourierSpectrum(); 
+    resetSimulation(); 
+    updateFormulaUI();
+}
 
+// 이벤트 리스너 통합 관리
+document.getElementById('addFreqBtn').addEventListener('click', () => {
+    channels.push({ hz: 2.0, amp: 0.5, phase: 0 });
+    renderChannelUI(); onDataChange();
+});
 document.getElementById('clearBtn').addEventListener('click', () => {
     channels = [];
-    renderChannelUI(); updateFourierSpectrum(); resetSimulation();
+    renderChannelUI(); onDataChange();
+});
+
+// 프리셋 관리
+document.getElementById('presetSquare').addEventListener('click', () => {
+    channels = [
+        { hz: 1.0, amp: 1.2, phase: 0 },
+        { hz: 3.0, amp: 0.4, phase: 0 },
+        { hz: 5.0, amp: 0.24, phase: 0 }
+    ];
+    renderChannelUI(); onDataChange();
+});
+document.getElementById('presetSawtooth').addEventListener('click', () => {
+    channels = [
+        { hz: 1.0, amp: 1.0, phase: 0 },
+        { hz: 2.0, amp: 0.5, phase: 0 },
+        { hz: 3.0, amp: 0.33, phase: 0 },
+        { hz: 4.0, amp: 0.25, phase: 0 }
+    ];
+    renderChannelUI(); onDataChange();
+});
+document.getElementById('presetPhaseDiff').addEventListener('click', () => {
+    channels = [
+        { hz: 1.5, amp: 1.0, phase: 0 },
+        { hz: 1.5, amp: 1.0, phase: 180 }
+    ];
+    renderChannelUI(); onDataChange();
 });
 
 windingInput.addEventListener('input', (e) => {
     windingFreq = parseFloat(e.target.value);
     windingVal.innerText = windingFreq.toFixed(2);
-    updateFourierSpectrum(); resetSimulation();
+    document.getElementById('formula-curr-wind').innerText = windingFreq.toFixed(2);
+    onDataChange();
+});
+speedInput.addEventListener('input', (e) => {
+    simSpeed = parseFloat(e.target.value);
+});
+sidebarToggle.addEventListener('click', () => {
+    sidebar.classList.toggle('closed');
+    mainContent.classList.toggle('expanded');
 });
 startBtn.addEventListener('click', startSimulation);
 
+// 수학 핵심 함수 구조 정의
+function singleChannelFunction(ch, t) {
+    const radPhase = (ch.phase * Math.PI) / 180;
+    return ch.amp * Math.sin(2 * Math.PI * ch.hz * t + radPhase);
+}
+
 function signalFunction(t) {
     let sum = 0;
-    channels.forEach(ch => {
-        sum += ch.amp * Math.sin(2 * Math.PI * ch.hz * t);
-    });
+    const len = channels.length;
+    for(let i=0; i<len; i++) {
+        sum += singleChannelFunction(channels[i], t);
+    }
     return sum;
 }
 
@@ -97,53 +181,62 @@ function initCharts() {
         type: 'line',
         data: {
             datasets: [
-                { label: '합성 신호', data: [], borderColor: '#38bdf8', borderWidth: 2, pointRadius: 0, tension: 0.2 },
-                { label: '현재 위치', data: [], borderColor: '#f43f5e', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
+                { label: '최종 합성 신호', data: [], borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.1 },
+                { label: '채널 1 성분', data: [], borderColor: 'rgba(234, 179, 8, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
+                { label: '채널 2 성분', data: [], borderColor: 'rgba(168, 85, 247, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
+                { label: '채널 3 성분', data: [], borderColor: 'rgba(236, 72, 153, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
+                { label: '채널 4 성분', data: [], borderColor: 'rgba(20, 184, 166, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
+                { label: '현재 스캔 바', data: [], borderColor: '#f43f5e', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
             ]
         },
-        options: { scales: { x: { type: 'linear', min: 0, max: maxTime }, y: { min: -2.5, max: 2.5 } }, animation: false, plugins: { legend: { display: false } } }
+        options: { 
+            scales: { x: { type: 'linear', min: 0, max: maxTime }, y: { min: -3.0, max: 3.0 } }, 
+            animation: false, 
+            plugins: { legend: { display: true, labels: { boxWidth: 12 } } } 
+        }
     });
 
     complexChart = new Chart(document.getElementById('complexChart').getContext('2d'), {
         type: 'scatter',
         data: {
             datasets: [
-                { label: '원형 파형', data: [], borderColor: '#4ade80', borderWidth: 1.2, showLine: true, pointRadius: 0, tension: 0.1 },
-                { label: '현재 끝점', data: [], backgroundColor: '#f43f5e', pointRadius: 6 },
-                { label: '실제 무게중심', data: [], backgroundColor: '#fbbf24', borderColor: '#ffffff', borderWidth: 1.5, pointRadius: 8 },
+                { label: '원형 파형 기하 궤적', data: [], borderColor: '#4ade80', borderWidth: 1.2, showLine: true, pointRadius: 0, tension: 0.1 },
+                { label: '현재 끝점 위치', data: [], backgroundColor: '#f43f5e', pointRadius: 6 },
+                { label: '무게중심점', data: [], backgroundColor: '#fbbf24', borderColor: '#ffffff', borderWidth: 1.5, pointRadius: 8 },
                 { label: '중심 벡터선', data: [], borderColor: 'rgba(251, 191, 36, 0.4)', borderWidth: 1.5, showLine: true, pointRadius: 0 }
             ]
         },
-        options: { scales: { x: { min: -2.5, max: 2.5 }, y: { min: -2.5, max: 2.5 } }, aspectRatio: 1, animation: false, plugins: { legend: { display: false } } }
+        options: { scales: { x: { min: -3.0, max: 3.0 }, y: { min: -3.0, max: 3.0 } }, aspectRatio: 1, animation: false, plugins: { legend: { display: false } } }
     });
 
     centerTrackingChart = new Chart(document.getElementById('centerTrackingChart').getContext('2d'), {
         type: 'line',
         data: {
             datasets: [
-                { label: '전체 스펙트럼', data: [], borderColor: '#475569', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
-                { label: '탐색 흔적', data: [], borderColor: '#61dafb', backgroundColor: 'rgba(97, 218, 251, 0.15)', fill: true, pointRadius: 0 },
-                { label: '현재 위치', data: [], backgroundColor: '#ffffff', pointRadius: 7 }
+                { label: '전체 푸리에 스펙트럼', data: [], borderColor: '#475569', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
+                { label: '탐색 흔적 누적', data: [], borderColor: '#61dafb', backgroundColor: 'rgba(97, 218, 251, 0.15)', fill: true, pointRadius: 0 },
+                { label: '현재 스캔 주파수', data: [], backgroundColor: '#ffffff', borderColor: '#61dafb', borderWidth: 2, pointRadius: 7 }
             ]
         },
-        options: { scales: { x: { type: 'linear', min: 0, max: 5.0 }, y: { min: -0.05, max: 1.2 } }, animation: false, plugins: { legend: { display: false } } }
+        options: { scales: { x: { type: 'linear', min: 0, max: 5.0 }, y: { min: -0.05, max: 1.5 } }, animation: false, plugins: { legend: { display: false } } }
     });
 }
 
 function updateFourierSpectrum() {
-    let fullSpectrum = [];
-    let tracedSpectrum = [];
+    const fullSpectrum = [];
+    const tracedSpectrum = [];
     
+    // 조밀한 주파수 루프 최적화
     for (let f = 0; f <= 5.0; f += 0.02) {
         let sumX = 0, sumY = 0, c = 0;
         for (let t = 0; t <= maxTime; t += 0.05) {
-            let theta = -2 * Math.PI * f * t;
-            let r = signalFunction(t);
+            const theta = -2 * Math.PI * f * t;
+            const r = signalFunction(t);
             sumX += r * Math.cos(theta);
             sumY += r * Math.sin(theta);
             c++;
         }
-        let magnitude = Math.sqrt((sumX/c)**2 + (sumY/c)**2);
+        const magnitude = Math.sqrt((sumX/c)**2 + (sumY/c)**2);
         fullSpectrum.push({x: f, y: magnitude});
         if (f <= windingFreq) tracedSpectrum.push({x: f, y: magnitude});
     }
@@ -153,7 +246,7 @@ function updateFourierSpectrum() {
     
     let currentY = 0;
     if(fullSpectrum.length > 0) {
-        let closest = fullSpectrum.reduce((prev, curr) => Math.abs(curr.x - windingFreq) < Math.abs(prev.x - windingFreq) ? curr : prev);
+        const closest = fullSpectrum.reduce((prev, curr) => Math.abs(curr.x - windingFreq) < Math.abs(prev.x - windingFreq) ? curr : prev);
         currentY = closest.y;
     }
     centerTrackingChart.data.datasets[2].data = [{x: windingFreq, y: currentY}];
@@ -164,13 +257,29 @@ function resetSimulation() {
     cancelAnimationFrame(animationFrameId);
     currentTime = 0; complexPoints = []; sumReal = 0; sumImag = 0; count = 0;
 
-    let t_arr = [];
+    const t_arr = [];
     for(let t=0; t<=maxTime; t+=0.02) t_arr.push({x: t, y: signalFunction(t)});
     timeChart.data.datasets[0].data = t_arr;
-    timeChart.data.datasets[1].data = [];
     
+    for (let i = 1; i <= 4; i++) {
+        if (channels[i-1]) {
+            const ch_arr = [];
+            for(let t=0; t<=maxTime; t+=0.02) {
+                ch_arr.push({x: t, y: singleChannelFunction(channels[i-1], t)});
+            }
+            timeChart.data.datasets[i].data = ch_arr;
+            timeChart.setDatasetVisibility(i, true);
+        } else {
+            timeChart.data.datasets[i].data = [];
+            timeChart.setDatasetVisibility(i, false);
+        }
+    }
+    
+    timeChart.data.datasets[5].data = [];
     for(let i=0; i<4; i++) complexChart.data.datasets[i].data = [];
-    timeChart.update(); complexChart.update();
+    
+    timeChart.update(); 
+    complexChart.update();
 }
 
 function startSimulation() {
@@ -184,18 +293,19 @@ function animate() {
         return;
     }
 
-    let radius = signalFunction(currentTime); 
-    let theta = -2 * Math.PI * windingFreq * currentTime;
-    let x = radius * Math.cos(theta);
-    let y = radius * Math.sin(theta);
+    const radius = signalFunction(currentTime); 
+    const theta = -2 * Math.PI * windingFreq * currentTime;
+    const x = radius * Math.cos(theta);
+    const y = radius * Math.sin(theta);
 
     sumReal += x; sumImag += y; count++;
-    let centerReal = sumReal / count;
-    let centerImag = sumImag / count;
+    const centerReal = sumReal / count;
+    const centerImag = sumImag / count;
 
     complexPoints.push({x: x, y: y});
 
-    timeChart.data.datasets[1].data = [{x: currentTime, y: -2.5}, {x: currentTime, y: 2.5}];
+    // 가비지 컬렉션 부하를 최소화하기 위한 고정 인덱스 데이터 업서트 가속 기법
+    timeChart.data.datasets[5].data = [{x: currentTime, y: -3.0}, {x: currentTime, y: 3.0}];
     complexChart.data.datasets[0].data = complexPoints;
     complexChart.data.datasets[1].data = [{x: x, y: y}];
     complexChart.data.datasets[2].data = [{x: centerReal, y: centerImag}];
@@ -204,6 +314,25 @@ function animate() {
     timeChart.update('none');
     complexChart.update('none');
 
-    currentTime += dt;
+    currentTime += (dt * simSpeed);
     animationFrameId = requestAnimationFrame(animate);
+}
+
+function updateFormulaUI() {
+    const chBox = document.getElementById('formula-channels');
+    if(channels.length === 0) chBox.innerText = "활성화된 성분 없음";
+    else {
+        chBox.innerHTML = channels.map((ch, idx) => {
+            return `ch${idx+1}: ${ch.amp.toFixed(1)}·sin(2π·${ch.hz.toFixed(1)}·t ${ch.phase >= 0 ? '+' : ''}${ch.phase}°)\n`;
+        }).join("");
+    }
+
+    const sigBox = document.getElementById('formula-signal');
+    if(channels.length === 0) sigBox.innerText = "f(t) = 0";
+    else {
+        sigBox.innerText = "f(t) = " + channels.map((ch, idx) => `ch${idx+1}`).join(" + ");
+    }
+
+    const centerBox = document.getElementById('formula-center');
+    centerBox.innerText = `F(${windingFreq.toFixed(2)}) = 1/T · ʃ [f(t) · e^(-i·2π·${windingFreq.toFixed(2)}·t)] dt`;
 }
