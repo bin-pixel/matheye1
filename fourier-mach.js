@@ -69,15 +69,6 @@ document.getElementById('addFreqBtn').addEventListener('click', () => {
     renderChannelUI(); updateFourierSpectrum(); resetSimulation();
 });
 
-document.getElementById('presetSquareBtn').addEventListener('click', () => {
-    channels = [
-        { hz: 1.0, amp: 1.0 },
-        { hz: 3.0, amp: 1.0 / 3.0 },
-        { hz: 5.0, amp: 1.0 / 5.0 }
-    ];
-    renderChannelUI(); updateFourierSpectrum(); resetSimulation();
-});
-
 document.getElementById('clearBtn').addEventListener('click', () => {
     channels = [];
     renderChannelUI(); updateFourierSpectrum(); resetSimulation();
