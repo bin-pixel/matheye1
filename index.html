@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>주파수 분해 기계: 원형 감기 시각화</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background-color: #0b0f19; 
+            color: #e2e8f0; 
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h2 { color: #61dafb; margin-bottom: 5px; }
+        p { color: #94a3b8; margin-bottom: 25px; }
+        
+        .controls { 
+            background: #1e293b; 
+            padding: 20px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
+            margin-bottom: 25px; 
+        }
+        .input-row { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .control-group { display: flex; flex-direction: column; min-width: 220px; flex: 1; }
+        .control-group label { font-weight: 600; margin-bottom: 8px; color: #cbd5e1; font-size: 14px; }
+        
+        input[type="number"] { 
+            padding: 10px; 
+            background: #0f172a; 
+            border: 1px solid #334155; 
+            border-radius: 6px; 
+            color: #fff; 
+            font-size: 14px; 
+        }
+        input[type="range"] { 
+            width: 100%; 
+            accent-color: #61dafb;
+        }
+        
+        .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+        .chart-container { 
+            background: #1e293b; 
+            padding: 20px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
+        }
+        .chart-container h3 { margin-top: 0; font-size: 16px; color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+        .full-width { grid-column: span 2; }
+        
+        canvas { width: 100% !important; height: 320px !important; }
+        
+        button { 
+            padding: 12px 30px; 
+            background: linear-gradient(135deg, #38bdf8, #0369a1); 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            font-size: 14px; 
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(3, 105, 161, 0.3);
+        }
+        button:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 16px rgba(3, 105, 161, 0.4);
+        }
+        .highlight-freq { color: #f43f5e; font-weight: bold; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Fourier Winding Machine (원형 파형 감기 기계)</h2>
+    <p>선형의 시간 그래프를 둥근 원형 틀에 감아 보며, 파형의 무게중심이 쏠리는 기하학적 흔적을 추적합니다.</p>
+    
+    <div class="controls">
+        <div class="input-row">
+            <div class="control-group">
+                <label for="freq1">합성 주파수 A (Hz)</label>
+                <input type="number" id="freq1" value="2" min="0.5" max="8" step="0.5">
+            </div>
+            <div class="control-group">
+                <label for="freq2">합성 주파수 B (Hz)</label>
+                <input type="number" id="freq2" value="3" min="0.5" max="8" step="0.5">
+            </div>
+            <div class="control-group" style="justify-content: flex-end;">
+                <button id="startBtn">실시간 감기 시작</button>
+            </div>
+        </div>
+        <div class="control-group">
+            <label for="windingFreqInput">기계가 파형을 감는 진동수: <span id="windingFreqVal" class="highlight-freq">1.00</span> Hz</label>
+            <input type="range" id="windingFreqInput" min="0.0" max="5.0" step="0.02" value="1.0">
+        </div>
+    </div>
+
+    <div class="chart-grid">
+        <div class="chart-container">
+            <h3>1. 원래 시간-세기 그래프 (선형 파형)</h3>
+            <canvas id="timeChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <h3>2. 원형 틀에 둘둘 감아버린 파형 (기하학적 매핑)</h3>
+            <canvas id="complexChart"></canvas>
+        </div>
+        
+        <div class="chart-container full-width">
+            <h3>3. 주파수에 따른 x좌표의 무게 중심 스펙트럼 (X: 진동수, Y: 무게중심 X)</h3>
+            <canvas id="centerTrackingChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 관찰 시간을 영상처럼 충분히 확보해야 피크가 뚜렷하고 예쁘게 떨어집니다.
+    const maxTime = 10.0; 
+    const dt = 0.03; // 눈이 따라가기 편하도록 프레임 레이트 속도 안정화     
+    
+    let currentTime = 0;
+    let animationFrameId = null;
+    
+    let f1 = 2.0;
+    let f2 = 3.0;
+    let windingFreq = 1.0;
+    
+    let complexPoints = [];
+    let sumReal = 0, sumImag = 0, count = 0;
+
+    let timeChart, complexChart, centerTrackingChart;
+
+    const freq1Input = document.getElementById('freq1');
+    const freq2Input = document.getElementById('freq2');
+    const windingInput = document.getElementById('windingFreqInput');
+    const windingVal = document.getElementById('windingFreqVal');
+    const startBtn = document.getElementById('startBtn');
+
+    windingInput.addEventListener('input', (e) => {
+        windingFreq = parseFloat(e.target.value);
+        windingVal.innerText = windingFreq.toFixed(2);
+        updateFourierSpectrum(); // 슬라이더 움직이면 스펙트럼 배경 즉시 갱신
+        resetSimulation();
+    });
+    
+    freq1Input.addEventListener('change', () => { f1 = parseFloat(freq1Input.value); updateFourierSpectrum(); resetSimulation(); });
+    freq2Input.addEventListener('change', () => { f2 = parseFloat(freq2Input.value); updateFourierSpectrum(); resetSimulation(); });
+    startBtn.addEventListener('click', startSimulation);
+
+    function signalFunction(t) {
+        // 원본 영상의 오리지널 기하학적 매커니즘 구현을 위해 오프셋을 제거하여 완벽하게 싱크를 맞춥니다.
+        return Math.sin(2 * Math.PI * f1 * t) + Math.sin(2 * Math.PI * f2 * t);
+    }
+
+    function initCharts() {
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = '#334155';
+
+        timeChart = new Chart(document.getElementById('timeChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    { label: '합성 신호 f(t)', data: [], borderColor: '#38bdf8', borderWidth: 2, pointRadius: 0, tension: 0.4 },
+                    { label: '현재 감는 위치', data: [], borderColor: '#f43f5e', borderDash: [4,4], pointRadius: 0 }
+                ]
+            },
+            options: { scales: { x: { type: 'linear', min: 0, max: maxTime } }, animation: false, plugins: { legend: { display: false } } }
+        });
+
+        complexChart = new Chart(document.getElementById('complexChart').getContext('2d'), {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    { label: '원형으로 감긴 파형', data: [], borderColor: '#4ade80', borderWidth: 1.5, showLine: true, pointRadius: 0, tension: 0.2 },
+                    { label: '현재 끝점', data: [], backgroundColor: '#f43f5e', pointRadius: 6 },
+                    { label: '무게중심', data: [], backgroundColor: '#fbbf24', pointRadius: 9, pointStyle: 'circle' }
+                ]
+            },
+            options: { 
+                scales: { 
+                    x: { min: -2.5, max: 2.5, grid: { color: '#1e293b' } }, 
+                    y: { min: -2.5, max: 2.5, grid: { color: '#1e293b' } } 
+                }, 
+                aspectRatio: 1, 
+                animation: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // 3. X축을 '시간'에서 '진동수'로 전면 교체
+        centerTrackingChart = new Chart(document.getElementById('centerTrackingChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    { label: '전체 스펙트럼 궤적', data: [], borderColor: '#475569', borderWidth: 1, borderDash: [2, 2], pointRadius: 0 },
+                    { label: '현재 주파수까지 칠해지는 흔적', data: [], borderColor: '#f43f5e', backgroundColor: 'rgba(244, 63, 94, 0.1)', fill: true, pointRadius: 0, tension: 0.2 },
+                    { label: '현재 슬라이더 위치 탐침', data: [], backgroundColor: '#ffffff', pointRadius: 7 }
+                ]
+            },
+            options: {
+                scales: {
+                    x: { type: 'linear', min: 0, max: 5.0, title: { display: true, text: '진동수 (바퀴/초)' } },
+                    y: { min: -0.1, max: 1.0, title: { display: true, text: 'x좌표의 무게 중심' } }
+                },
+                animation: false,
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // 슬라이더 주파수 위치에 맞추어 영상 속 빨간색 파형 진동수 스펙트럼 영역을 그려내는 함수
+    function updateFourierSpectrum() {
+        let fullSpectrum = [];
+        let tracedSpectrum = [];
+        
+        for (let f = 0; f <= 5.0; f += 0.02) {
+            let sumX = 0, c = 0;
+            for (let t = 0; t <= maxTime; t += 0.03) {
+                let theta = -2 * Math.PI * f * t;
+                sumX += signalFunction(t) * Math.cos(theta);
+                c++;
+            }
+            let avgX = Math.abs(sumX / c);
+            fullSpectrum.push({x: f, y: avgX});
+            
+            if (f <= windingFreq) {
+                tracedSpectrum.push({x: f, y: avgX});
+            }
+        }
+        
+        centerTrackingChart.data.datasets[0].data = fullSpectrum;
+        centerTrackingChart.data.datasets[1].data = tracedSpectrum;
+        
+        let currentY = 0;
+        if(fullSpectrum.length > 0) {
+            let closest = fullSpectrum.reduce((prev, curr) => Math.abs(curr.x - windingFreq) < Math.abs(prev.x - windingFreq) ? curr : prev);
+            currentY = closest.y;
+        }
+        centerTrackingChart.data.datasets[2].data = [{x: windingFreq, y: currentY}];
+        centerTrackingChart.update();
+    }
+
+    function resetSimulation() {
+        cancelAnimationFrame(animationFrameId);
+        currentTime = 0;
+        complexPoints = [];
+        sumReal = 0; sumImag = 0; count = 0;
+
+        let t_arr = [];
+        for(let t=0; t<=maxTime; t+=0.02) t_arr.push({x: t, y: signalFunction(t)});
+        
+        timeChart.data.datasets[0].data = t_arr;
+        timeChart.data.datasets[1].data = [];
+        
+        complexChart.data.datasets[0].data = [];
+        complexChart.data.datasets[1].data = [];
+        complexChart.data.datasets[2].data = [];
+        
+        timeChart.update();
+        complexChart.update();
+    }
+
+    function startSimulation() {
+        f1 = parseFloat(freq1Input.value);
+        f2 = parseFloat(freq2Input.value);
+        windingFreq = parseFloat(windingInput.value);
+        resetSimulation();
+        animate();
+    }
+
+    function animate() {
+        if (currentTime > maxTime) {
+            cancelAnimationFrame(animationFrameId);
+            return;
+        }
+
+        let radius = signalFunction(currentTime); 
+        let theta = -2 * Math.PI * windingFreq * currentTime;
+        
+        let x = radius * Math.cos(theta);
+        let y = radius * Math.sin(theta);
+
+        // 오리지널 무게중심 메커니즘 연산
+        sumReal += x;
+        count++;
+        
+        let centerReal = sumReal / count;
+
+        complexPoints.push({x: x, y: y});
+
+        timeChart.data.datasets[1].data = [{x: currentTime, y: -2.5}, {x: currentTime, y: 2.5}];
+        
+        complexChart.data.datasets[0].data = [...complexPoints];
+        complexChart.data.datasets[1].data = [{x: x, y: y}];
+        complexChart.data.datasets[2].data = [{x: centerReal, y: 0}]; // X축 상의 무게중심점 표기
+
+        timeChart.update();
+        complexChart.update();
+
+        currentTime += dt;
+        animationFrameId = requestAnimationFrame(animate);
+    }
+
+    window.onload = () => {
+        initCharts();
+        updateFourierSpectrum();
+        resetSimulation();
+    };
+</script>
+
+</body>
+</html>
