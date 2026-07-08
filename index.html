@@ -2,123 +2,81 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>주파수 분해 기계: 멀티 채널 융합기</title>
+    <title>주파수 분해 기계: 멀티 채널 융합기 v2</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
     <script src="fourier-mach.js" defer></script> 
-    <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 0; 
-            padding: 20px; 
-            background-color: #0b0f19; 
-            color: #e2e8f0; 
-        }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h2 { color: #61dafb; margin-bottom: 5px; }
-        p { color: #94a3b8; margin-bottom: 25px; }
-        
-        .controls { 
-            background: #1e293b; 
-            padding: 20px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3); 
-            margin-bottom: 25px; 
-        }
-        .preset-row { margin-bottom: 15px; display: flex; gap: 10px; }
-        
-        #frequencyContainer { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
-        .freq-card { 
-            background: #0f172a; 
-            padding: 12px; 
-            border-radius: 8px; 
-            border: 1px solid #334155; 
-            display: flex; 
-            align-items: center; 
-            gap: 10px; 
-        }
-        .freq-card label { font-size: 13px; color: #cbd5e1; font-weight: bold; }
-        .freq-card input { 
-            width: 60px; 
-            padding: 6px; 
-            background: #1e293b; 
-            border: 1px solid #475569; 
-            color: #fff; 
-            border-radius: 4px; 
-            text-align: center; 
-        }
-        
-        .action-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #334155; padding-top: 15px; }
-        .control-group { display: flex; flex-direction: column; width: 60%; }
-        input[type="range"] { width: 100%; accent-color: #61dafb; }
-        
-        .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
-        .chart-container { 
-            background: #1e293b; 
-            padding: 20px; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2); 
-        }
-        .chart-container h3 { margin-top: 0; font-size: 16px; color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 10px; }
-        .full-width { grid-column: span 2; }
-        canvas { width: 100% !important; height: 340px !important; }
-        
-        button { 
-            padding: 8px 16px; 
-            border: none; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            font-size: 13px; 
-            transition: all 0.2s; 
-        }
-        .btn-blue { background: linear-gradient(135deg, #38bdf8, #0369a1); color: white; }
-        .btn-green { background: #10b981; color: white; }
-        .btn-red { background: #f43f5e; color: white; padding: 6px 10px; }
-        .btn-slate { background: #475569; color: white; }
-        button:hover { transform: translateY(-1px); opacity: 0.9; }
-        .highlight-freq { color: #f43f5e; font-weight: bold; font-size: 18px; }
-    </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Fourier Multi-Winding Machine (멀티 채널 푸리에 기계)</h2>
-    <p>원하는 만큼 파형을 융합하고 복소평면에 감아 무한한 신호가 사각파로 진화하는 원리를 탐구합니다.</p>
-    
-    <div class="controls">
-        <div class="preset-row">
-            <button id="addFreqBtn" class="btn-green">+ 주파수 채널 추가</button>
-            <button id="clearBtn" class="btn-slate">초기화</button>
-        </div>
-
-        <div id="frequencyContainer"></div>
-
-        <div class="action-row">
-            <div class="control-group">
-                <label for="windingFreqInput">기계가 파형을 감는 진동수: <span id="windingFreqVal" class="highlight-freq">1.00</span> Hz</label>
-                <input type="range" id="windingFreqInput" min="0.0" max="5.0" step="0.01" value="1.0">
+<div class="main-content" id="mainContent">
+    <div class="container">
+        <h2>Fourier Multi-Winding Machine (멀티 채널 푸리에 기계)</h2>
+        <p>원하는 주파수와 위상을 융합하고, 복소평면에 파형을 감아 개별 신호 성분으로 완벽하게 분리 추적해 봅니다.</p>
+        
+        <div class="controls">
+            <div class="preset-row">
+                <button id="addFreqBtn" class="btn-green">+ 주파수 채널 추가</button>
+                <button id="clearBtn" class="btn-slate">초기화</button>
+                <span class="preset-label" style="margin-left: 15px;">실험용 파형 프리셋:</span>
+                <button id="presetSquare" class="btn-purple">사각파 근사</button>
+                <button id="presetSawtooth" class="btn-purple">톱니파 근사</button>
+                <button id="presetPhaseDiff" class="btn-purple">위상 간섭 쌍</button>
             </div>
-            <button id="startBtn" class="btn-blue" style="padding: 12px 35px; font-size: 15px;">실시간 감기 시작</button>
-        </div>
-    </div>
 
-    <div class="chart-grid">
-        <div class="chart-container">
-            <h3>1. 여러 주파수가 하나로 합성된 시간-세기 그래프</h3>
-            <canvas id="timeChart"></canvas>
+            <div id="frequencyContainer"></div>
+
+            <div class="action-row">
+                <div class="control-group" style="max-width: 200px;">
+                    <label for="speedInput" style="font-size:13px; font-weight:bold;">시뮬레이션 속도 배속</label>
+                    <input type="range" id="speedInput" min="0.2" max="3.0" step="0.1" value="1.0">
+                </div>
+                <div class="control-group">
+                    <label for="windingFreqInput">기계가 파형을 감는 진동수: <span id="windingFreqVal" class="highlight-freq">1.00</span> Hz</label>
+                    <input type="range" id="windingFreqInput" min="0.0" max="5.0" step="0.01" value="1.0">
+                </div>
+                <button id="startBtn" class="btn-blue" style="padding: 12px 25px; font-size: 15px; min-width: 140px;">실시간 감기 시작</button>
+            </div>
         </div>
-        
-        <div class="chart-container">
-            <h3>2. 원형 틀 기하학 매핑 (노란 점: 실제 무게중심)</h3>
-            <canvas id="complexChart"></canvas>
-        </div>
-        
-        <div class="chart-container full-width">
-            <h3>3. 통합 주파수 변위 스펙트럼 (모든 피크점을 추적)</h3>
-            <canvas id="centerTrackingChart"></canvas>
+
+        <div class="chart-grid">
+            <div class="chart-container">
+                <h3>1. 시간-세기 그래프 (합성 신호 및 구성 주파수 분리선)</h3>
+                <canvas id="timeChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h3>2. 원형 틀 기하학 매핑 (노란 점: 실제 무게중심)</h3>
+                <canvas id="complexChart"></canvas>
+            </div>
+            
+            <div class="chart-container full-width">
+                <h3>3. 통합 주파수 변위 스펙트럼 (개별 성분 분리 및 탐색 흔적 추적)</h3>
+                <canvas id="centerTrackingChart"></canvas>
+            </div>
         </div>
     </div>
 </div>
+
+<div id="sidebar" class="sidebar">
+    <h3>수학적 연산식 대시보드</h3>
+    
+    <h4>1. 각 채널별 신호 원형</h4>
+    <div id="formula-channels" class="formula-box"></div>
+    
+    <h4>2. 최종 합성 신호 f(t)</h4>
+    <div id="formula-signal" class="formula-box"></div>
+    
+    <h4>3. 회전 틀 매핑 (오일러 공식)</h4>
+    <div class="formula-box" id="formula-euler">g(t) = f(t) × e^(-i·2π·f_wind·t)</div>
+    <div class="formula-note">※ 현재 설정 기준 각도(θ) 변환:<br>θ = -2π × <span id="formula-curr-wind">1.00</span> × t</div>
+
+    <h4>4. 푸리에 적분 (무게중심 좌표)</h4>
+    <div id="formula-center" class="formula-box"></div>
+    <div class="formula-note">※ 실시간 연산중인 무게중심의 절대 거리(크기)가 아래 그래프의 주파수 성분 세기(Peak)가 됩니다.</div>
+</div>
+
+<button id="sidebarToggle" class="sidebar-toggle btn-slate">➔ 수식창 토글</button>
 
 </body>
 </html>
