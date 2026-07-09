@@ -8,7 +8,7 @@ let animationFrameId = null;
 let windingFreq = 1.0;
 let simSpeed = 1.0;
 
-// 각 채널 데이터 구조에 독립 노출 여부인 visible 플래그 적용
+// 초기 채널 데이터 세팅
 let channels = [
     { hz: 1.0, amp: 1.0, phase: 0, visible: true },
     { hz: 2.5, amp: 0.8, phase: 90, visible: false }
@@ -18,7 +18,19 @@ let complexPoints = [];
 let sumReal = 0, sumImag = 0, count = 0;
 let timeChart, complexChart, centerTrackingChart;
 
-// DOM 메모리 캐싱 가속화
+// 각 채널 선에 적용할 고유 색상 배열 (채널이 많아져도 순환하며 자동 배정)
+const channelColors = [
+    'rgba(234, 179, 8, 0.7)',   // 노랑
+    'rgba(168, 85, 247, 0.7)',  // 보라
+    'rgba(236, 72, 153, 0.7)',  // 핑크
+    'rgba(20, 184, 166, 0.7)',  // 민트
+    'rgba(249, 115, 22, 0.7)',  // 주황
+    'rgba(34, 197, 94, 0.7)',   // 초록
+    'rgba(99, 102, 241, 0.7)',  // 인디고
+    'rgba(239, 68, 68, 0.7)'    // 빨강
+];
+
+// DOM 메모리 캐싱
 const container = document.getElementById('frequencyContainer');
 const windingInput = document.getElementById('windingFreqInput');
 const windingVal = document.getElementById('windingFreqVal');
@@ -28,7 +40,7 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const mainContent = document.getElementById('mainContent');
 
-// 앱 초기 오케스트레이션
+// 앱 초기 실행
 initCharts();
 renderChannelUI();
 updateFourierSpectrum();
@@ -40,7 +52,6 @@ function renderChannelUI() {
     channels.forEach((ch, idx) => {
         const card = document.createElement('div');
         card.className = 'freq-card';
-        // 헤더 영역 내부에 개별 파형 시각화 토글 체크박스(.vis-check) 통합 구현
         card.innerHTML = `
             <div class="freq-card-header">
                 <span style="display: flex; align-items: center; gap: 6px;">
@@ -71,7 +82,6 @@ function renderChannelUI() {
 }
 
 function bindUIEvents() {
-    // 그래프 표시 온오프 토글 이벤트 감지 바인딩
     document.querySelectorAll('.vis-check').forEach(checkbox => {
         checkbox.addEventListener('change', (e) => {
             const idx = e.target.dataset.idx;
@@ -123,7 +133,6 @@ function onDataChange() {
     updateFormulaUI();
 }
 
-// 프리셋 처리 및 제어단 리스너 등록
 document.getElementById('addFreqBtn').addEventListener('click', () => {
     channels.push({ hz: 2.0, amp: 0.5, phase: 0, visible: true });
     renderChannelUI(); onDataChange();
@@ -187,16 +196,13 @@ function initCharts() {
     Chart.defaults.color = '#94a3b8';
     Chart.defaults.borderColor = '#334155';
 
+    // [최적화 변경점] 인덱스 하드코딩 요소를 제거하고 뼈대 데이터셋(합성신호, 스캔바)만 먼저 선언합니다.
     timeChart = new Chart(document.getElementById('timeChart').getContext('2d'), {
         type: 'line',
         data: {
             datasets: [
-                { label: '최종 합성 신호', data: [], borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.1 },
-                { label: '채널 1 성분', data: [], borderColor: 'rgba(234, 179, 8, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
-                { label: '채널 2 성분', data: [], borderColor: 'rgba(168, 85, 247, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
-                { label: '채널 3 성분', data: [], borderColor: 'rgba(236, 72, 153, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
-                { label: '채널 4 성분', data: [], borderColor: 'rgba(20, 184, 166, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
-                { label: '현재 스캔 바', data: [], borderColor: '#f43f5e', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
+                { id: 'total_signal', label: '최종 합성 신호', data: [], borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.1 },
+                { id: 'scan_bar', label: '현재 스캔 바', data: [], borderColor: '#f43f5e', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
             ]
         },
         options: { 
@@ -264,27 +270,42 @@ function resetSimulation() {
     cancelAnimationFrame(animationFrameId);
     currentTime = 0; complexPoints = []; sumReal = 0; sumImag = 0; count = 0;
 
+    // 1. 합성 신호 데이터 배열 주입
     const t_arr = [];
     for(let t=0; t<=maxTime; t+=0.02) t_arr.push({x: t, y: signalFunction(t)});
     timeChart.data.datasets[0].data = t_arr;
     
-    // 유저가 채널 성분 체크박스(visible)를 켠 대상선만 연산 루프에 할당하여 성능 낭비 배제
-    for (let i = 1; i <= 4; i++) {
-        const ch = channels[i-1];
-        if (ch && ch.visible) {
+    // 2. [핵심 수정] 기존 채널용으로 등록된 동적 데이터셋을 깨끗이 밀어버리고 재생성 준비를 합니다.
+    // 인덱스 0(합성신호)과 맨 마지막(스캔바)을 제외한 중간 성분 라인들을 리셋합니다.
+    const scanBarDataset = timeChart.data.datasets.find(d => d.id === 'scan_bar');
+    timeChart.data.datasets = [timeChart.data.datasets[0]]; // 일단 합성신호만 남김
+
+    // 3. 현재 존재하는 채널 수 만큼 루프를 돌며 동적으로 선 데이터셋을 삽입합니다 (무제한 가능)
+    channels.forEach((ch, i) => {
+        if (ch.visible) {
             const ch_arr = [];
             for(let t=0; t<=maxTime; t+=0.02) {
                 ch_arr.push({x: t, y: singleChannelFunction(ch, t)});
             }
-            timeChart.data.datasets[i].data = ch_arr;
-            timeChart.setDatasetVisibility(i, true);
-        } else {
-            timeChart.data.datasets[i].data = [];
-            timeChart.setDatasetVisibility(i, false);
+            
+            // 고유 색상 매핑 연산
+            const colorIdx = i % channelColors.length;
+            
+            timeChart.data.datasets.push({
+                label: `채널 ${i+1} 성분`,
+                data: ch_arr,
+                borderColor: channelColors[colorIdx],
+                borderWidth: 1.5,
+                borderDash: [3, 3],
+                pointRadius: 0
+            });
         }
-    }
+    });
+
+    // 4. 스캔바 데이터셋을 항상 가장 최상단 레이어로 오도록 맨 뒤에 다시 붙여줍니다.
+    scanBarDataset.data = [];
+    timeChart.data.datasets.push(scanBarDataset);
     
-    timeChart.data.datasets[5].data = [];
     for(let i=0; i<4; i++) complexChart.data.datasets[i].data = [];
     
     timeChart.update(); 
@@ -313,7 +334,10 @@ function animate() {
 
     complexPoints.push({x: x, y: y});
 
-    timeChart.data.datasets[5].data = [{x: currentTime, y: -3.0}, {x: currentTime, y: 3.0}];
+    // 스캔바는 언제나 맨 마지막 인덱스 데이터셋임이 동적으로 보장됩니다.
+    const lastIdx = timeChart.data.datasets.length - 1;
+    timeChart.data.datasets[lastIdx].data = [{x: currentTime, y: -3.0}, {x: currentTime, y: 3.0}];
+    
     complexChart.data.datasets[0].data = complexPoints;
     complexChart.data.datasets[1].data = [{x: x, y: y}];
     complexChart.data.datasets[2].data = [{x: centerReal, y: centerImag}];
