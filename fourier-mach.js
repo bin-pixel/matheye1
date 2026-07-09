@@ -8,17 +8,17 @@ let animationFrameId = null;
 let windingFreq = 1.0;
 let simSpeed = 1.0;
 
-// 초기 채널 데이터 세팅 (hz, amp, phase)
+// 각 채널 데이터 구조에 독립 노출 여부인 visible 플래그 적용
 let channels = [
-    { hz: 1.0, amp: 1.0, phase: 0 },
-    { hz: 2.5, amp: 0.8, phase: 90 }
+    { hz: 1.0, amp: 1.0, phase: 0, visible: true },
+    { hz: 2.5, amp: 0.8, phase: 90, visible: false }
 ];
 
 let complexPoints = [];
 let sumReal = 0, sumImag = 0, count = 0;
 let timeChart, complexChart, centerTrackingChart;
 
-// DOM 캐싱 (성능 향상)
+// DOM 메모리 캐싱 가속화
 const container = document.getElementById('frequencyContainer');
 const windingInput = document.getElementById('windingFreqInput');
 const windingVal = document.getElementById('windingFreqVal');
@@ -28,7 +28,7 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const mainContent = document.getElementById('mainContent');
 
-// 챠트 초기화 및 메인 바인딩
+// 앱 초기 오케스트레이션
 initCharts();
 renderChannelUI();
 updateFourierSpectrum();
@@ -40,9 +40,13 @@ function renderChannelUI() {
     channels.forEach((ch, idx) => {
         const card = document.createElement('div');
         card.className = 'freq-card';
+        // 헤더 영역 내부에 개별 파형 시각화 토글 체크박스(.vis-check) 통합 구현
         card.innerHTML = `
             <div class="freq-card-header">
-                <span>채널 ${idx+1} 성분</span>
+                <span style="display: flex; align-items: center; gap: 6px;">
+                    <input type="checkbox" ${ch.visible ? 'checked' : ''} class="vis-check" data-idx="${idx}" id="vis_${idx}">
+                    <label style="width:auto; cursor:pointer;" for="vis_${idx}">채널 ${idx+1} 성분</label>
+                </span>
                 <button class="btn-red del-btn" data-idx="${idx}">삭제 (X)</button>
             </div>
             <div class="freq-row">
@@ -67,7 +71,16 @@ function renderChannelUI() {
 }
 
 function bindUIEvents() {
-    // 이벤트 위임을 쓰지 않고 입력 피드백 최적화를 위해 개별 바인딩 유지
+    // 그래프 표시 온오프 토글 이벤트 감지 바인딩
+    document.querySelectorAll('.vis-check').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            const idx = e.target.dataset.idx;
+            channels[idx].visible = e.target.checked;
+            resetSimulation(); 
+            updateFormulaUI();
+        });
+    });
+
     document.querySelectorAll('.hz-range').forEach(input => {
         input.addEventListener('input', (e) => {
             const idx = e.target.dataset.idx;
@@ -76,6 +89,7 @@ function bindUIEvents() {
             onDataChange();
         });
     });
+
     document.querySelectorAll('.amp-range').forEach(input => {
         input.addEventListener('input', (e) => {
             const idx = e.target.dataset.idx;
@@ -84,6 +98,7 @@ function bindUIEvents() {
             onDataChange();
         });
     });
+
     document.querySelectorAll('.phase-range').forEach(input => {
         input.addEventListener('input', (e) => {
             const idx = e.target.dataset.idx;
@@ -92,6 +107,7 @@ function bindUIEvents() {
             onDataChange();
         });
     });
+
     document.querySelectorAll('.del-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             channels.splice(e.target.dataset.idx, 1);
@@ -107,9 +123,9 @@ function onDataChange() {
     updateFormulaUI();
 }
 
-// 이벤트 리스너 통합 관리
+// 프리셋 처리 및 제어단 리스너 등록
 document.getElementById('addFreqBtn').addEventListener('click', () => {
-    channels.push({ hz: 2.0, amp: 0.5, phase: 0 });
+    channels.push({ hz: 2.0, amp: 0.5, phase: 0, visible: true });
     renderChannelUI(); onDataChange();
 });
 document.getElementById('clearBtn').addEventListener('click', () => {
@@ -117,28 +133,27 @@ document.getElementById('clearBtn').addEventListener('click', () => {
     renderChannelUI(); onDataChange();
 });
 
-// 프리셋 관리
 document.getElementById('presetSquare').addEventListener('click', () => {
     channels = [
-        { hz: 1.0, amp: 1.2, phase: 0 },
-        { hz: 3.0, amp: 0.4, phase: 0 },
-        { hz: 5.0, amp: 0.24, phase: 0 }
+        { hz: 1.0, amp: 1.2, phase: 0, visible: true },
+        { hz: 3.0, amp: 0.4, phase: 0, visible: false },
+        { hz: 5.0, amp: 0.24, phase: 0, visible: false }
     ];
     renderChannelUI(); onDataChange();
 });
 document.getElementById('presetSawtooth').addEventListener('click', () => {
     channels = [
-        { hz: 1.0, amp: 1.0, phase: 0 },
-        { hz: 2.0, amp: 0.5, phase: 0 },
-        { hz: 3.0, amp: 0.33, phase: 0 },
-        { hz: 4.0, amp: 0.25, phase: 0 }
+        { hz: 1.0, amp: 1.0, phase: 0, visible: true },
+        { hz: 2.0, amp: 0.5, phase: 0, visible: false },
+        { hz: 3.0, amp: 0.33, phase: 0, visible: false },
+        { hz: 4.0, amp: 0.25, phase: 0, visible: false }
     ];
     renderChannelUI(); onDataChange();
 });
 document.getElementById('presetPhaseDiff').addEventListener('click', () => {
     channels = [
-        { hz: 1.5, amp: 1.0, phase: 0 },
-        { hz: 1.5, amp: 1.0, phase: 180 }
+        { hz: 1.5, amp: 1.0, phase: 0, visible: true },
+        { hz: 1.5, amp: 1.0, phase: 180, visible: true }
     ];
     renderChannelUI(); onDataChange();
 });
@@ -149,16 +164,13 @@ windingInput.addEventListener('input', (e) => {
     document.getElementById('formula-curr-wind').innerText = windingFreq.toFixed(2);
     onDataChange();
 });
-speedInput.addEventListener('input', (e) => {
-    simSpeed = parseFloat(e.target.value);
-});
+speedInput.addEventListener('input', (e) => { simSpeed = parseFloat(e.target.value); });
 sidebarToggle.addEventListener('click', () => {
     sidebar.classList.toggle('closed');
     mainContent.classList.toggle('expanded');
 });
 startBtn.addEventListener('click', startSimulation);
 
-// 수학 핵심 함수 구조 정의
 function singleChannelFunction(ch, t) {
     const radPhase = (ch.phase * Math.PI) / 180;
     return ch.amp * Math.sin(2 * Math.PI * ch.hz * t + radPhase);
@@ -167,9 +179,7 @@ function singleChannelFunction(ch, t) {
 function signalFunction(t) {
     let sum = 0;
     const len = channels.length;
-    for(let i=0; i<len; i++) {
-        sum += singleChannelFunction(channels[i], t);
-    }
+    for(let i=0; i<len; i++) { sum += singleChannelFunction(channels[i], t); }
     return sum;
 }
 
@@ -182,10 +192,10 @@ function initCharts() {
         data: {
             datasets: [
                 { label: '최종 합성 신호', data: [], borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.1 },
-                { label: '채널 1 성분', data: [], borderColor: 'rgba(234, 179, 8, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
-                { label: '채널 2 성분', data: [], borderColor: 'rgba(168, 85, 247, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
-                { label: '채널 3 성분', data: [], borderColor: 'rgba(236, 72, 153, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
-                { label: '채널 4 성분', data: [], borderColor: 'rgba(20, 184, 166, 0.4)', borderWidth: 1.2, borderDash: [2, 2], pointRadius: 0 },
+                { label: '채널 1 성분', data: [], borderColor: 'rgba(234, 179, 8, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
+                { label: '채널 2 성분', data: [], borderColor: 'rgba(168, 85, 247, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
+                { label: '채널 3 성분', data: [], borderColor: 'rgba(236, 72, 153, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
+                { label: '채널 4 성분', data: [], borderColor: 'rgba(20, 184, 166, 0.6)', borderWidth: 1.5, borderDash: [3, 3], pointRadius: 0 },
                 { label: '현재 스캔 바', data: [], borderColor: '#f43f5e', borderWidth: 1.5, borderDash: [4,4], pointRadius: 0 }
             ]
         },
@@ -225,8 +235,6 @@ function initCharts() {
 function updateFourierSpectrum() {
     const fullSpectrum = [];
     const tracedSpectrum = [];
-    
-    // 조밀한 주파수 루프 최적화
     for (let f = 0; f <= 5.0; f += 0.02) {
         let sumX = 0, sumY = 0, c = 0;
         for (let t = 0; t <= maxTime; t += 0.05) {
@@ -240,7 +248,6 @@ function updateFourierSpectrum() {
         fullSpectrum.push({x: f, y: magnitude});
         if (f <= windingFreq) tracedSpectrum.push({x: f, y: magnitude});
     }
-    
     centerTrackingChart.data.datasets[0].data = fullSpectrum;
     centerTrackingChart.data.datasets[1].data = tracedSpectrum;
     
@@ -261,11 +268,13 @@ function resetSimulation() {
     for(let t=0; t<=maxTime; t+=0.02) t_arr.push({x: t, y: signalFunction(t)});
     timeChart.data.datasets[0].data = t_arr;
     
+    // 유저가 채널 성분 체크박스(visible)를 켠 대상선만 연산 루프에 할당하여 성능 낭비 배제
     for (let i = 1; i <= 4; i++) {
-        if (channels[i-1]) {
+        const ch = channels[i-1];
+        if (ch && ch.visible) {
             const ch_arr = [];
             for(let t=0; t<=maxTime; t+=0.02) {
-                ch_arr.push({x: t, y: singleChannelFunction(channels[i-1], t)});
+                ch_arr.push({x: t, y: singleChannelFunction(ch, t)});
             }
             timeChart.data.datasets[i].data = ch_arr;
             timeChart.setDatasetVisibility(i, true);
@@ -304,7 +313,6 @@ function animate() {
 
     complexPoints.push({x: x, y: y});
 
-    // 가비지 컬렉션 부하를 최소화하기 위한 고정 인덱스 데이터 업서트 가속 기법
     timeChart.data.datasets[5].data = [{x: currentTime, y: -3.0}, {x: currentTime, y: 3.0}];
     complexChart.data.datasets[0].data = complexPoints;
     complexChart.data.datasets[1].data = [{x: x, y: y}];
@@ -323,7 +331,8 @@ function updateFormulaUI() {
     if(channels.length === 0) chBox.innerText = "활성화된 성분 없음";
     else {
         chBox.innerHTML = channels.map((ch, idx) => {
-            return `ch${idx+1}: ${ch.amp.toFixed(1)}·sin(2π·${ch.hz.toFixed(1)}·t ${ch.phase >= 0 ? '+' : ''}${ch.phase}°)\n`;
+            const stateText = ch.visible ? ' (차트 표시 중)' : ' (숨김)';
+            return `ch${idx+1}: ${ch.amp.toFixed(1)}·sin(2π·${ch.hz.toFixed(1)}·t ${ch.phase >= 0 ? '+' : ''}${ch.phase}°)${stateText}\n`;
         }).join("");
     }
 
