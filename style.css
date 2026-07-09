@@ -61,7 +61,18 @@ p { color: #94a3b8; margin-bottom: 25px; }
     margin-bottom: 5px;
 }
 
-.freq-card-header span { font-size: 13px; color: #61dafb; font-weight: bold; }
+.freq-card-header span { 
+    font-size: 13px; 
+    color: #61dafb; 
+    font-weight: bold; 
+}
+
+.vis-check {
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    accent-color: #10b981;
+}
 
 .freq-row {
     display: flex;
