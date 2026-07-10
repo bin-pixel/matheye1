@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>주파수 분해 기계: 멀티 채널 융합기 v2</title>
+    <title>푸리에 변환</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="style.css">
     <script src="fourier-mach.js" defer></script> 
@@ -11,12 +11,12 @@
 
 <div class="main-content" id="mainContent">
     <div class="container">
-        <h2>Fourier Multi-Winding Machine (멀티 채널 푸리에 기계)</h2>
-        <p>원하는 주파수와 위상을 융합하고, 복소평면에 파형을 감아 개별 신호 성분으로 완벽하게 분리 추적해 봅니다.</p>
+        <h2>푸리에 변환 시물레이션</h2>
+        <p>원하는 주파수와 위상을 융합하고, 복소평면에 파형을 감아 개별 신호 성분으로 완벽하게 분리 추적합니다</p>
         
         <div class="controls">
             <div class="preset-row">
-                <button id="addFreqBtn" class="btn-green">+ 주파수 채널 추가</button>
+                <button id="addFreqBtn" class="btn-green">+ 주파수 추가</button>
                 <button id="clearBtn" class="btn-slate">초기화</button>
                 <span class="preset-label" style="margin-left: 15px;">실험용 파형 프리셋:</span>
                 <button id="presetSquare" class="btn-purple">사각파 근사</button>
@@ -32,7 +32,7 @@
                     <input type="range" id="speedInput" min="0.2" max="3.0" step="0.1" value="1.0">
                 </div>
                 <div class="control-group">
-                    <label for="windingFreqInput">기계가 파형을 감는 진동수: <span id="windingFreqVal" class="highlight-freq">1.00</span> Hz</label>
+                    <label for="windingFreqInput">파형을 감는 진동수: <span id="windingFreqVal" class="highlight-freq">1.00</span> Hz</label>
                     <input type="range" id="windingFreqInput" min="0.0" max="5.0" step="0.01" value="1.0">
                 </div>
                 <button id="startBtn" class="btn-blue" style="padding: 12px 25px; font-size: 15px; min-width: 140px;">실시간 감기 시작</button>
@@ -61,7 +61,7 @@
 <div id="sidebar" class="sidebar">
     <h3>수학적 연산식 대시보드</h3>
     
-    <h4>1. 각 채널별 신호 원형</h4>
+    <h4>1. 각 주파수별 신호 원형</h4>
     <div id="formula-channels" class="formula-box"></div>
     
     <h4>2. 최종 합성 신호 f(t)</h4>
